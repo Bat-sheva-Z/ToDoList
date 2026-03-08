@@ -1,0 +1,15 @@
+# Node - Client
+node_modules/
+dist/
+.env
+
+# .NET - Server
+bin/
+obj/
+appsettings.Development.json
+*.user
+.vs/
+
+# OS files
+.DS_Store
+Thumbs.db
