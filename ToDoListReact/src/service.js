@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Config Default
-axios.defaults.baseURL = "http://localhost:5119";
+axios.defaults.baseURL = process.env.REACT_APP_API_URL || "http://localhost:5119";
 
 // Request Interceptor - הוספת JWT Token לכל בקשה
 axios.interceptors.request.use(
