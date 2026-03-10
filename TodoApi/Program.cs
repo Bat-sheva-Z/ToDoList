@@ -9,7 +9,13 @@ using System.IdentityModel.Tokens.Jwt;
 var builder = WebApplication.CreateBuilder(args);
 
 // חיבור ל-MySQL
-var connectionString = builder.Configuration.GetConnectionString("ToDoDB");
+// var connectionString = builder.Configuration.GetConnectionString("ToDoDB");
+var connectionString = builder.Configuration.GetConnectionString("ToDoDB") ?? builder.Configuration["ConnectionStrings:ToDoDB"];
+
+if (string.IsNullOrEmpty(connectionString))
+{
+throw new Exception("Connection string 'ToDoDB' not found in configuration.");
+}
 builder.Services.AddDbContext<ToDoDbContext>(options =>
     options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
 
