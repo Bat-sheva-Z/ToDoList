@@ -143,5 +143,9 @@ app.MapDelete("/items/{id}", async (int id, ToDoDbContext db) =>
 }).RequireAuthorization();
 
 app.MapGet("/", () => "The API is running!");
-
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ToDoDbContext>();
+    db.Database.EnsureCreated(); // זה יצור את הטבלאות אוטומטית בפעם הראשונה!
+}
 app.Run();
