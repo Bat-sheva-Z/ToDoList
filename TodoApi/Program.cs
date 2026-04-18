@@ -146,24 +146,16 @@ app.MapGet("/", () => "The API is running!");
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ToDoDbContext>();
-    
-    // יצירת טבלת Users ידנית
-    var createUsersSql = @"
-        CREATE TABLE IF NOT EXISTS Users (
-            Id INT AUTO_INCREMENT PRIMARY KEY,
-            Username VARCHAR(255) NOT NULL,
-            Password VARCHAR(255) NOT NULL
-        );";
-        
-    // יצירת טבלת Items ידנית
-    var createItemsSql = @"
-        CREATE TABLE IF NOT EXISTS Items (
-            Id INT AUTO_INCREMENT PRIMARY KEY,
-            Title VARCHAR(255) NOT NULL,
-            IsComplete BOOLEAN DEFAULT FALSE
-        );";
-
-    db.Database.ExecuteSqlRaw(createUsersSql);
-    db.Database.ExecuteSqlRaw(createItemsSql);
+    try 
+    {
+        // ניסיון פשוט לבדוק אם המסד נגיש
+        db.Database.CanConnect();
+        db.Database.EnsureCreated();
+        Console.WriteLine("Database connection successful.");
+    }
+    catch (Exception ex) 
+    {
+        Console.WriteLine($"DATABASE ERROR: {ex.Message}");
+    }
 }
 app.Run();
