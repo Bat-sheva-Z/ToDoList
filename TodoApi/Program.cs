@@ -148,14 +148,28 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<ToDoDbContext>();
     try 
     {
-        // ניסיון פשוט לבדוק אם המסד נגיש
-        db.Database.CanConnect();
-        db.Database.EnsureCreated();
-        Console.WriteLine("Database connection successful.");
+        var createUsersSql = @"
+            CREATE TABLE IF NOT EXISTS users (
+                Id INT AUTO_INCREMENT PRIMARY KEY,
+                Username VARCHAR(255) NOT NULL,
+                Password VARCHAR(255) NOT NULL
+            );";
+            
+        var createItemsSql = @"
+            CREATE TABLE IF NOT EXISTS items (
+                Id INT AUTO_INCREMENT PRIMARY KEY,
+                Name VARCHAR(255) NOT NULL,
+                IsComplete BOOLEAN DEFAULT FALSE
+            );";
+
+        db.Database.ExecuteSqlRaw(createUsersSql);
+        db.Database.ExecuteSqlRaw(createItemsSql);
+        Console.WriteLine("---- Database setup complete: Name field used ----");
     }
     catch (Exception ex) 
     {
-        Console.WriteLine($"DATABASE ERROR: {ex.Message}");
+        Console.WriteLine($"---- DATABASE ERROR: {ex.Message} ----");
     }
 }
+
 app.Run();
