@@ -146,6 +146,24 @@ app.MapGet("/", () => "The API is running!");
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ToDoDbContext>();
-    db.Database.EnsureCreated(); // זה יצור את הטבלאות אוטומטית בפעם הראשונה!
+    
+    // יצירת טבלת Users ידנית
+    var createUsersSql = @"
+        CREATE TABLE IF NOT EXISTS Users (
+            Id INT AUTO_INCREMENT PRIMARY KEY,
+            Username VARCHAR(255) NOT NULL,
+            Password VARCHAR(255) NOT NULL
+        );";
+        
+    // יצירת טבלת Items ידנית
+    var createItemsSql = @"
+        CREATE TABLE IF NOT EXISTS Items (
+            Id INT AUTO_INCREMENT PRIMARY KEY,
+            Title VARCHAR(255) NOT NULL,
+            IsComplete BOOLEAN DEFAULT FALSE
+        );";
+
+    db.Database.ExecuteSqlRaw(createUsersSql);
+    db.Database.ExecuteSqlRaw(createItemsSql);
 }
 app.Run();
