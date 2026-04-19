@@ -78,8 +78,36 @@ app.MapPost("/items", async (ToDoDbContext db, Item item) => {
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ToDoDbContext>();
-    db.Database.ExecuteSqlRaw("CREATE TABLE IF NOT EXISTS users (Id INT AUTO_INCREMENT PRIMARY KEY, Username VARCHAR(255), Password VARCHAR(255));");
-    db.Database.ExecuteSqlRaw("CREATE TABLE IF NOT EXISTS items (Id INT AUTO_INCREMENT PRIMARY KEY, Name VARCHAR(255), IsComplete BOOLEAN);");
+    try 
+    {
+        // שלב 1: מחיקת הטבלה הקיימת כדי לנקות שגיאות מבנה קודמות
+        db.Database.ExecuteSqlRaw("DROP TABLE IF EXISTS items;");
+        
+        // שלב 2: יצירה מחדש של הטבלה עם השדות המדויקים (Name ולא Title)
+        var createItemsSql = @"
+            CREATE TABLE items (
+                Id INT AUTO_INCREMENT PRIMARY KEY,
+                Name VARCHAR(255) NOT NULL,
+                IsComplete BOOLEAN DEFAULT FALSE
+            );";
+
+        // יצירת טבלת משתמשים (אם היא לא קיימת)
+        var createUsersSql = @"
+            CREATE TABLE IF NOT EXISTS users (
+                Id INT AUTO_INCREMENT PRIMARY KEY,
+                Username VARCHAR(255) NOT NULL,
+                Password VARCHAR(255) NOT NULL
+            );";
+
+        db.Database.ExecuteSqlRaw(createUsersSql);
+        db.Database.ExecuteSqlRaw(createItemsSql);
+        
+        Console.WriteLine("---- Database Cleaned and Resetted Successfully ----");
+    }
+    catch (Exception ex) 
+    {
+        Console.WriteLine($"---- DATABASE ERROR: {ex.Message} ----");
+    }
 }
 
 app.Run();
