@@ -3,45 +3,31 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
-using System.Security.Claims;
-using System.IdentityModel.Tokens.Jwt;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// חיבור ל-MySQL
-// var connectionString = builder.Configuration.GetConnectionString("ToDoDB");
+// Connection String
 var connectionString = builder.Configuration.GetConnectionString("ToDoDB") ?? builder.Configuration["ConnectionStrings:ToDoDB"];
-
-if (string.IsNullOrEmpty(connectionString))
-{
-throw new Exception("Connection string 'ToDoDB' not found in configuration.");
-}
 builder.Services.AddDbContext<ToDoDbContext>(options =>
     options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
 
-// CORS
+// CORS - פתוח לכולם כדי למנוע חסימות
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll",
-        builder => builder.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+    options.AddPolicy("AllowAll", b => b.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 });
 
-// JWT Authentication
-var jwtKey = builder.Configuration["Jwt:Key"]!;
-var jwtIssuer = builder.Configuration["Jwt:Issuer"]!;
-var jwtAudience = builder.Configuration["Jwt:Audience"]!;
-
+// JWT
+var jwtKey = builder.Configuration["Jwt:Key"] ?? "YourSuperSecretKey1234567890123456";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer = true,
-            ValidateAudience = true,
+            ValidateIssuer = false,
+            ValidateAudience = false,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = jwtIssuer,
-            ValidAudience = jwtAudience,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
     });
@@ -52,124 +38,48 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// if (app.Environment.IsDevelopment())
-// {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-// }
-
 app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseSwagger();
+app.UseSwaggerUI();
 
-// ==========================================
-// Auth Routes
-// ==========================================
-
-// הרשמה
-app.MapPost("/register", async (ToDoDbContext db, User newUser) =>
-{
-    // בדיקה אם המשתמש כבר קיים
-    var existing = await db.Users.FirstOrDefaultAsync(u => u.Username == newUser.Username);
-    if (existing is not null)
-        return Results.BadRequest("Username already exists");
-
-    db.Users.Add(newUser);
+// Routes
+app.MapPost("/register", async (ToDoDbContext db, User user) => {
+    if (await db.Users.AnyAsync(u => u.Username == user.Username)) return Results.BadRequest();
+    db.Users.Add(user);
     await db.SaveChangesAsync();
-    return Results.Created($"/users/{newUser.Id}", new { newUser.Id, newUser.Username });
+    return Results.Ok();
 });
 
-// התחברות
-app.MapPost("/login", async (ToDoDbContext db, User loginUser) =>
-{
-    var user = await db.Users.FirstOrDefaultAsync(
-        u => u.Username == loginUser.Username && u.Password == loginUser.Password);
-
-    if (user is null)
-        return Results.Unauthorized();
-
-    // יצירת JWT Token
-    var claims = new[]
-    {
-        new Claim(ClaimTypes.Name, user.Username),
-        new Claim(ClaimTypes.NameIdentifier, user.Id.ToString())
+app.MapPost("/login", async (ToDoDbContext db, User user) => {
+    var u = await db.Users.FirstOrDefaultAsync(x => x.Username == user.Username && x.Password == user.Password);
+    if (u == null) return Results.Unauthorized();
+    
+    var tokenHandler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+    var key = Encoding.UTF8.GetBytes(jwtKey);
+    var tokenDescriptor = new SecurityTokenDescriptor {
+        Subject = new System.Security.Claims.ClaimsIdentity(new[] { new System.Security.Claims.Claim("id", u.Id.ToString()) }),
+        Expires = DateTime.UtcNow.AddDays(7),
+        SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
     };
-
-    var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
-    var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-    var token = new JwtSecurityToken(
-        issuer: jwtIssuer,
-        audience: jwtAudience,
-        claims: claims,
-        expires: DateTime.UtcNow.AddHours(1),
-        signingCredentials: creds
-    );
-
-    var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
-    return Results.Ok(new { token = tokenString });
+    return Results.Ok(new { token = tokenHandler.CreateToken(tokenDescriptor) == null ? "" : tokenHandler.WriteToken(tokenHandler.CreateToken(tokenDescriptor)) });
 });
 
-// ==========================================
-// Items Routes - מוגנות עם JWT
-// ==========================================
-
-app.MapGet("/items", async (ToDoDbContext db) =>
-    await db.Items.ToListAsync()).RequireAuthorization();
-
-app.MapPost("/items", async (ToDoDbContext db, Item newItem) =>
-{
-    db.Items.Add(newItem);
+// Items Routes
+app.MapGet("/items", async (ToDoDbContext db) => await db.Items.ToListAsync()).RequireAuthorization();
+app.MapPost("/items", async (ToDoDbContext db, Item item) => {
+    db.Items.Add(item);
     await db.SaveChangesAsync();
-    return Results.Created($"/items/{newItem.Id}", newItem);
+    return Results.Created($"/items/{item.Id}", item);
 }).RequireAuthorization();
 
-app.MapPut("/items/{id}", async (int id, bool isComplete, ToDoDbContext db) =>
-{
-    var item = await db.Items.FindAsync(id);
-    if (item is null) return Results.NotFound();
-    item.IsComplete = isComplete;
-    await db.SaveChangesAsync();
-    return Results.NoContent();
-}).RequireAuthorization();
-
-app.MapDelete("/items/{id}", async (int id, ToDoDbContext db) =>
-{
-    var item = await db.Items.FindAsync(id);
-    if (item is null) return Results.NotFound();
-    db.Items.Remove(item);
-    await db.SaveChangesAsync();
-    return Results.NoContent();
-}).RequireAuthorization();
-
-app.MapGet("/", () => "The API is running!");
+// הקוד של יצירת הטבלאות - חייב להיות לפני app.Run
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ToDoDbContext>();
-    try 
-    {
-        var createUsersSql = @"
-            CREATE TABLE IF NOT EXISTS users (
-                Id INT AUTO_INCREMENT PRIMARY KEY,
-                Username VARCHAR(255) NOT NULL,
-                Password VARCHAR(255) NOT NULL
-            );";
-            
-        var createItemsSql = @"
-            CREATE TABLE IF NOT EXISTS items (
-                Id INT AUTO_INCREMENT PRIMARY KEY,
-                Name VARCHAR(255) NOT NULL,
-                IsComplete BOOLEAN DEFAULT FALSE
-            );";
-
-        db.Database.ExecuteSqlRaw(createUsersSql);
-        db.Database.ExecuteSqlRaw(createItemsSql);
-        Console.WriteLine("---- Database setup complete: Name field used ----");
-    }
-    catch (Exception ex) 
-    {
-        Console.WriteLine($"---- DATABASE ERROR: {ex.Message} ----");
-    }
+    db.Database.ExecuteSqlRaw("CREATE TABLE IF NOT EXISTS users (Id INT AUTO_INCREMENT PRIMARY KEY, Username VARCHAR(255), Password VARCHAR(255));");
+    db.Database.ExecuteSqlRaw("CREATE TABLE IF NOT EXISTS items (Id INT AUTO_INCREMENT PRIMARY KEY, Name VARCHAR(255), IsComplete BOOLEAN);");
 }
 
 app.Run();
